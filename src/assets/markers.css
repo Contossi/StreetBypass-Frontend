@@ -33,3 +33,19 @@
   background: red;
   color: white;
 }
+.route-point-marker {
+  width:32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: blue;
+  border: 2px solid white;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: white;
+  font-weight:bold;
+  font-size: 14px;
+  box-sizing:border-box;
+}

@@ -5,6 +5,10 @@
                 +
             </button>
 
+            <button class="route-button" @click="startRouteMode">
+                Kreni s navigacijom
+            </button>
+
             <div v-if="menuOpen" class="add-menu">
                 <button @click="toggleLpMenu">
                     Ležeći policajac
@@ -35,6 +39,9 @@ const mapContainer = ref(null)
 const menuOpen =ref(false)
 const lpMenuOpen = ref(false)
 const selectedType = ref(null)
+const routeMode = ref(false)
+const routePoints = ref([])
+const routeMarkers = ref([])
 let map = null
 
 function toggleMenu(){
@@ -108,6 +115,97 @@ function getMarkerIcon(type){
     if(type === 'kamera') return 'kamera'
     return '!'
 }
+function clearRouteMarkers() {
+    routeMarkers.value.forEach(marker => {
+        marker.remove()
+    })
+    routeMarkers.value = []
+}
+function clearRouteLine() {
+    if (map.getLayer('route')){
+        map.removeLayer('route')
+    }
+
+    if (map.getSource('route')) {
+        map.removeSource('route')
+    }
+}
+function startRouteMode() {
+    clearRouteMarkers()
+    clearRouteLine()
+
+    routeMode.value = true
+    routePoints.value = []
+
+    selectedType.value = null
+    menuOpen.value = false
+    lpMenuOpen.value = false
+
+    console.log('Route mode started')
+}
+function addRoutePointMarker(coords, label) {
+    const el= document.createElement('div')
+
+    el.classList.add('route-point-marker')
+    el.textContent = label
+
+    const marker = new mapboxgl.Marker(el)
+    .setLngLat(coords)
+    .addTo(map)
+
+    routeMarkers.value.push(marker)
+}
+async function getAndDrawRoute(start, end) {
+    const token = import.meta.env.VITE_MAPBOX_TOKEN
+    const url=
+        `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+        `${start[0]},${start[1]};${end[0]},${end[1]}` +
+        `?geometries=geojson&overview=full&access_token=${token}`
+    try{
+        const response = await fetch(url)
+        const data = await response.json()
+
+        if (!data.routes || data.routes.length === 0) {
+            console.error('No route found: ', data)
+            return
+        }
+        const routeGeometry = data.routes[0].geometry
+        drawRoute(routeGeometry)
+
+        console.log('Route data:', data.routes[0])
+    }   catch (error) {
+        console.error('Route error:', error)
+    }
+}
+function drawRoute(routeGeometry){
+    const routeGeojson = {
+        type: 'Feature',
+        properties: {},
+        geometry: routeGeometry
+    }
+
+    if(map.getSource('route')) {
+        map.getSource('route').setData(routeGeojson)
+        return
+    }
+    map.addSource('route', {
+        type: 'geojson',
+        data:routeGeojson
+    })
+    map.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        layout: {
+            'line-join': 'round',
+            'line-cap': 'round',
+        },
+        paint: {
+            'line-color': 'lightskyblue',
+            'line-width': 8,
+        }
+    })
+}
 onMounted(() => {
     mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
         map = new mapboxgl.Map({
@@ -120,15 +218,32 @@ onMounted(() => {
         loadObstacles()
     })     
     map.on('click', async (event) => {
+        const coords = [event.lngLat.lng, event.lngLat.lat]
+
+        if(routeMode.value) {
+            routePoints.value.push(coords)
+
+            if(routePoints.value.length === 1){
+                addRoutePointMarker(coords, 'A')
+            }
+            if(routePoints.value.length === 2) {
+                addRoutePointMarker(coords, 'B')
+
+                await getAndDrawRoute(routePoints.value[0], routePoints.value[1])
+               
+                routeMode.value = false
+                routePoints.value = []
+            }
+            return
+        }
+
         if (!selectedType.value) return
 
-        const lng =event.lngLat.lng
-        const lat =event.lngLat.lat
         const obstacle = {
             type:selectedType.value,
             location: {
                 type:'Point', 
-                coordinates: [lng,lat]
+                coordinates: coords
             }
         }
         await saveObstacle(obstacle)
@@ -208,4 +323,23 @@ onMounted(() => {
     text-align: left;
 }
 
+.route-button {
+    position: absolute;
+    top:20px;
+    left:50%;
+    transform:translate(-50%);
+    z-index:999;
+
+    padding: 12px 24px;
+    border-radius: 24px;
+    border: 2px solid black;
+
+    background: orange;
+    color:black;
+    font-size:16px;
+    font-weight: bold;
+    cursor: pointer;
+
+    box-shadow:0 2px 10px rgba(0,0,0,0.25);
+}
 </style>
