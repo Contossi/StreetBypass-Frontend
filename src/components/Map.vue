@@ -70,9 +70,32 @@ async function saveObstacle(obstacle) {
         console.error('Fetch error: ', error)
         }
 }
+async function loadObstacles() {
+    try {
+        const response = await fetch('http://localhost:3000/api/obstacles?lng=13.8496&lat=44.8683')
+
+        if (!response.ok) {
+            const error = await response.json()
+            console.error('Backend error:', error)
+            return
+        }
+        const obstacles = await response.json()
+
+        obstacles.forEach(obstacle => {
+            if ( obstacle.location.type === 'Point') {
+                addPointMarker(obstacle)
+            }
+        })
+        console.log('Loaded obstacles: ', obstacles)
+
+      } catch (error) {
+        console.error('Fetch error:', error)
+      
+    }
+}
 function addPointMarker(obstacle) {
     const el =document.createElement('div')
-    el.className = `marker marker-${obstacle.type}`
+    el.className = `obstacle-marker obstacle-marker-${obstacle.type}`
     el.textContent =getMarkerIcon(obstacle.type)
 
     new mapboxgl.Marker(el)
@@ -80,9 +103,9 @@ function addPointMarker(obstacle) {
     .addTo(map)
 }
 function getMarkerIcon(type){
-    if(type.startsWith('lp')) return 'Miao'
-    if(type === 'semafor') return 'Miao22'
-    if(type === 'kamera') return 'Mrnjao'
+    if(type.startsWith('lp')) return 'Lp'
+    if(type === 'semafor') return 'semafor'
+    if(type === 'kamera') return 'kamera'
     return '!'
 }
 onMounted(() => {
@@ -92,7 +115,10 @@ onMounted(() => {
             style: 'mapbox://styles/mapbox/streets-v12',
             center: [13.8496, 44.8683],
             zoom: 13,
-        })    
+        })
+    map.on('load', () => {
+        loadObstacles()
+    })     
     map.on('click', async (event) => {
         if (!selectedType.value) return
 
@@ -180,30 +206,6 @@ onMounted(() => {
     background:orange;
     cursor: pointer;
     text-align: left;
-}
-.marker {
-    width:32px;
-    height:32px;
-    border-radius:50%;
-    background:orange;
-    border: 2px solid black;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    font-size:18px;
-    cursor:pointer;
-}
-.marker-lp1,
-.marker-lp2,
-.marker-lp3,
-.marker-lp4,
-.marker-lp5{
-    background:orange;
-}
-.marker-kamera{
-    background:orange;
 }
 
 </style>
