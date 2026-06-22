@@ -10,6 +10,70 @@
             <button class="route-button" @click="startRouteMode">
                 Kreni s navigacijom
             </button>
+            <div
+            v-if="routeMessage"
+            class="route-message"
+            :class="routeHasObstacles ? 'route-message-warning' : 'route-message-clear'"
+            >
+            <span>{{ routeMessage }}</span>
+            <button
+            classs="route-message-close"
+            @click="closeRouteMode"
+            aria-label="Zatvori navigaciju"
+            >
+            x
+            </button>
+            </div>
+            <button
+            class = "route-options-button"
+            @click="routeOptionsOpen = !routeOptionsOpen"
+            >
+                Prepreke
+            </button>
+            <div v-if="routeOptionsOpen" class="route-options">
+                <div class="route-options-title">Izbjegavaj</div>
+            
+
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="lp1">
+                Ležeći policajac 1
+            </label>
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="lp2">
+                Ležeći policajac 2
+            </label>
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="lp3">
+                Ležeći policajac 3
+            </label>
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="lp4">
+                Ležeći policajac 4
+            </label>
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="lp5">
+                Ležeći policajac 5
+            </label>
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="semafor">
+                Semafore
+            </label>
+
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="kamera">
+                Kamere
+            </label>
+
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="sljunak">
+                Šljunak
+            </label>
+
+            <label>
+                <input v-model="avoidTypes" type="checkbox" value="stara-cesta">
+                Stare ceste
+            </label>
+            </div>
 
             <div v-if="menuOpen" class="add-menu">
                 <button @click="toggleLpMenu">
@@ -28,7 +92,7 @@
                 <button @click ="selectObstacle('stara-cesta')">Stara cesta</button>
                 <button @click ="selectObstacle('sljunak')">Šljunak</button> 
             </div>
-    </div>
+    </div>   
 </template>
 
 
@@ -36,6 +100,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import * as turf from '@turf/turf'
 
 import sljunak from '../assets/sljunak.png'
 import pothole from '../assets/pothole.png'
@@ -51,7 +116,25 @@ const routePoints = ref([])
 const routeMarkers = ref([])
 const lineObstaclePoints = ref([])
 const lineObstacleMarkers = ref([])
+const allObstacles = ref([])
+const routeOptionsOpen =ref(false)
+const avoidTypes = ref([
+    'lp1',
+    'lp2',
+    'lp3',
+    'lp4',
+    'lp5',
+    'semafor',
+    'kamera',
+    'sljunak',
+    'stara-cesta'
+])
+const routeMessage = ref('')
+const routeHasObstacles = ref(false)
+const obstacleVisuals = new Map()
+const DETOUR_DISTANCES_KM = [0.08, 0.5 , 1.0, 2.0]
 let map = null
+
 
 function toggleMenu(){
     menuOpen.value =!menuOpen.value
@@ -105,6 +188,11 @@ async function deleteObstacle(id, marker, sourceId =null, layerId=null) {
     }
 
     marker.remove()
+    obstacleVisuals.delete(String(id))
+
+    allObstacles.value = allObstacles.value.filter(obstacle => {
+        return String(obstacle._id) !== String(id)
+    })
 
     if(layerId && map.getLayer(layerId)) {
         map.removeLayer(layerId)
@@ -130,6 +218,8 @@ async function loadObstacles() {
             return
         }
         const obstacles = await response.json()
+
+        allObstacles.value = obstacles
 
         obstacles.forEach(obstacle => {
             if ( obstacle.location.type === 'Point') {
@@ -196,18 +286,15 @@ function addPointMarker(obstacle) {
     .setPopup(popup)
     .addTo(map)
 
+    obstacleVisuals.set(String(obstacle._id), {
+        marker
+    })
+
     deleteButton.addEventListener('click', async () => {
         await deleteObstacle(obstacle._id, marker)
     })
 }
-function getMarkerIcon(type){
-    if(type.startsWith('lp')) return 'lp'
-    if(type === 'semafor') return semafor
-    if(type === 'kamera') return kamera
-    if(type === 'sljunak') return sljunak
-    if (type === 'stara-cesta') return pothole
-    return '!'
-}
+
 function clearRouteMarkers() {
     routeMarkers.value.forEach(marker => {
         marker.remove()
@@ -223,9 +310,82 @@ function clearRouteLine() {
         map.removeSource('route')
     }
 }
+function getObstacleDisplayName(type) {
+    if(type.startsWith('lp')) return type.toUpperCase()
+    if (type === 'semafor') return 'Semafor'
+    if (type === 'kamera') return 'Kamera'
+    if (type === 'sljunak') return 'Šljunak'
+    if (type === 'stara-cesta') return 'Stara cesta'
+
+    return type
+}
+function updateRouteMessage(obstacles) {
+    if(obstacles.length === 0) {
+        routeHasObstacles.value = false
+        routeMessage.value =
+        'Ruta ne prolazi kroz nijednu odabranu prepreku.'
+        return
+    }
+
+    const counts ={}
+    obstacles.forEach(obstacle => {
+        counts[obstacle.type] =(counts[obstacle.type] || 0) + 1
+    })
+
+    const summary = Object.entries(counts)
+    .map(([type,count]) => `${count} x ${getObstacleDisplayName(type)}`)
+    .join(', ')
+    routeHasObstacles.value = true
+    routeMessage.value =
+    `Najbolje pronađena ruta i dalje prolazi kroz: ${summary}.`
+}
+function setObstacleVisibility(visual, visible) {
+    if(visual.marker) {
+        visual.marker.getElement().style.display = visible ? '' : 'none'
+    }
+    if (visual.layerId && map.getLayer(visual.layerId)) {
+        map.setLayoutProperty(
+            visual.layerId,
+            'visibility',
+            visible ? 'visible' : 'none'
+        )
+    }
+}
+function showOnlyRouteObstacles(routeObstacles) {
+    const routeObstacleIds = new Set(
+        routeObstacles.map(obstacle => String(obstacle._id))
+    )
+    obstacleVisuals.forEach((visual, obstacleId) => {
+        setObstacleVisibility(
+            visual,
+            routeObstacleIds.has(String(obstacleId))
+        )
+    })
+}
+function showAllObstacles() {
+    obstacleVisuals.forEach(visual => {
+        setObstacleVisibility(visual, true)
+    })
+}
+function closeRouteMode() {
+    clearRouteMarkers()
+    clearRouteLine()
+    showAllObstacles()
+
+    routeMode.value = false
+    routePoints.value = []
+
+    routeMessage.value =''
+    routeHasObstacles.value = false
+}   
 function startRouteMode() {
     clearRouteMarkers()
     clearRouteLine()
+
+    showAllObstacles()
+    routeMessage.value = ''
+
+    routeOptionsOpen.value = false
 
     routeMode.value = true
     routePoints.value = []
@@ -249,26 +409,48 @@ function addRoutePointMarker(coords, label) {
     routeMarkers.value.push(marker)
 }
 async function getAndDrawRoute(start, end) {
-    const token = import.meta.env.VITE_MAPBOX_TOKEN
-    const url=
-        `https://api.mapbox.com/directions/v5/mapbox/driving/` +
-        `${start[0]},${start[1]};${end[0]},${end[1]}` +
-        `?geometries=geojson&overview=full&access_token=${token}`
-    try{
-        const response = await fetch(url)
-        const data = await response.json()
+  const directRoutes = await requestRoutes([start, end])
 
-        if (!data.routes || data.routes.length === 0) {
-            console.error('No route found: ', data)
-            return
-        }
-        const routeGeometry = data.routes[0].geometry
-        drawRoute(routeGeometry)
+  if (directRoutes.length === 0) {
+    return
+  }
 
-        console.log('Route data:', data.routes[0])
-    }   catch (error) {
-        console.error('Route error:', error)
+  const initialBestRoute = getBestRoute(directRoutes)
+  let chosenRoute = initialBestRoute
+
+  if (initialBestRoute.obstacleCount > 0) {
+    const obstacleToAvoid = initialBestRoute.obstacles[0]
+
+    const detourRoute = await getBestDetourRoute(
+      start,
+      end,
+      obstacleToAvoid
+    )
+
+    if (
+      detourRoute &&
+      detourRoute.obstacleCount < initialBestRoute.obstacleCount
+    ) {
+      chosenRoute = detourRoute
+
+      console.log('Detour route selected:', {
+        previousObstacles: initialBestRoute.obstacleCount,
+        newObstacles: detourRoute.obstacleCount
+      })
+    } else {
+      console.log('No better detour route found')
     }
+  }
+
+  drawRoute(chosenRoute.route.geometry)
+
+  showOnlyRouteObstacles(chosenRoute.obstacles)
+  updateRouteMessage(chosenRoute.obstacles)
+
+  console.log('Chosen route:', {
+    obstacles: chosenRoute.obstacleCount,
+    types: chosenRoute.obstacles.map(obstacle => obstacle.type)
+  })
 }
 function drawRoute(routeGeometry){
     const routeGeojson = {
@@ -298,6 +480,129 @@ function drawRoute(routeGeometry){
             'line-width': 8,
         }
     })
+}
+const OBSTACLE_DISTANCE_KM = 0.015
+
+function getObstacleFeature(obstacle) {
+    if (obstacle.location.type === 'Point') {
+        return turf.point(obstacle.location.coordinates)
+    }
+    if(obstacle.location.type === 'LineString') {
+        return turf.lineString(obstacle.location.coordinates)
+    }
+    return null
+}
+function shouldAvoidObstacle(obstacle) {
+    return avoidTypes.value.includes(obstacle.type)
+}
+function scoreRoute(route) {
+    const routeFeature = turf.lineString(route.geometry.coordinates)
+
+    const obstaclesOnRoute = allObstacles.value.filter(obstacle => {
+        if(!shouldAvoidObstacle(obstacle)) {
+            return false
+        }
+        const obstacleFeature = getObstacleFeature(obstacle)
+        if(!obstacleFeature) return false
+
+        const obstacleArea = turf.buffer(
+            obstacleFeature,
+            OBSTACLE_DISTANCE_KM,
+            {units : 'kilometers'}
+        )
+        return turf.booleanIntersects(routeFeature, obstacleArea)
+    })
+    return {
+        route,
+        obstacleCount: obstaclesOnRoute.length,
+        obstacles: obstaclesOnRoute
+    }
+}
+function getBestRoute(routes) {
+    const scoredRoutes = routes.map(scoreRoute)
+
+    scoredRoutes.sort((first, second) => {
+        if (first.obstacleCount !== second.obstacleCount) {
+            return first.obstacleCount - second.obstacleCount
+        }
+        return first.route.duration -second.route.duration
+    })
+    console.log('Route comparison', scoredRoutes.map(item => ({
+        obstacles: item.obstacleCount,
+        durationSeconds: Math.round(item.route.duration),
+        types: item.obstacles.map(obstacle => obstacle.type)
+    })))
+    return scoredRoutes[0]
+}
+
+
+async function requestRoutes(coordinates){
+    const token = import.meta.env.VITE_MAPBOX_TOKEN
+
+    const coordinateString = coordinates
+        .map(coordinate => `${coordinate[0]},${coordinate[1]}`)
+        .join(';')
+    const url =
+        `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+        `${coordinateString}` +
+        `?geometries=geojson&overview=full&alternatives=true&access_token=${token}`
+
+    try{
+        const response = await fetch(url)
+        const data = await response.json()
+
+        if (!response.ok || !data.routes || data.routes.length === 0) {
+            console.error('No route found: ', data)
+            return []
+        }
+        return data.routes
+    }   catch(error) {
+        console.error('Directions request error:', error)
+        return []
+    }
+}
+function getObstacleCenter(obstacle) {
+    if (obstacle.location.type === 'Point') {
+        return obstacle.location.coordinates
+    }
+    const coordinates = obstacle.location.coordinates
+    return coordinates[Math.floor(coordinates.length / 2)]
+}
+function createDetourWaypoints(obstacle) {
+  const obstacleCenter = turf.point(getObstacleCenter(obstacle))
+  const bearings = [0, 90, 180, -90]
+
+  return DETOUR_DISTANCES_KM.flatMap(distance => {
+    return bearings.map(bearing => {
+      return turf.destination(
+        obstacleCenter,
+        distance,
+        bearing,
+        { units: 'kilometers' }
+      ).geometry.coordinates
+    })
+  })
+}
+async function getBestDetourRoute(start, end, obstacle) {
+    const waypoints =createDetourWaypoints(obstacle)
+
+    const routeLists = await Promise.all(
+        waypoints.map(waypoint => requestRoutes([start, waypoint, end]))
+    )
+    const scoredRoutes = routeLists
+    .flat()
+    .map(scoreRoute)
+
+    if(scoredRoutes.length === 0) {
+        return null
+    }
+    scoredRoutes.sort((first,second) => {
+        if(first.obstacleCount !== second.obstacleCount) {
+            return first.obstacleCount - second.obstacleCount
+        }
+        return first.route.duration - second.route.duration
+    })
+    return scoredRoutes[0]
 }
 
 function isLineObstacle(type) {
@@ -385,6 +690,7 @@ async function handleLineObstaclePoint(coords) {
     clearLineObstaclePoints()
     selectedType.value = null
     if (savedObstacle) {
+        allObstacles.value.push(savedObstacle)
         addLineObstacle(savedObstacle)
     }
 }
@@ -467,6 +773,12 @@ function addLineObstacle(obstacle) {
     .setPopup(popup)
     .addTo(map)
 
+    obstacleVisuals.set(String(obstacle._id), {
+        marker,
+        sourceId,
+        layerId
+    })
+
   deleteButton.addEventListener('click', async () => {
     await deleteObstacle(obstacle._id, marker, sourceId, layerId)
   })
@@ -516,6 +828,7 @@ onMounted(() => {
         }
         const savedObstacle = await saveObstacle(obstacle)
         if(savedObstacle) {
+            allObstacles.value.push(savedObstacle)
             addPointMarker(savedObstacle)
         }
         selectedType.value =null
@@ -610,5 +923,93 @@ onMounted(() => {
     cursor: pointer;
 
     box-shadow:0 2px 10px rgba(0,0,0,0.25);
+}
+.route-options-button {
+  position: absolute;
+  top: 20px;
+  left: calc(50% + 155px);
+  z-index: 999;
+
+  padding: 10px 14px;
+  border: 2px solid black;
+  border-radius: 8px;
+
+  background: orange;
+  color: black;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.route-options {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  z-index: 999;
+  transform: translateX(-50%);
+
+  min-width: 190px;
+  padding: 12px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+
+  background: white;
+  border: 2px solid black;
+  border-radius: 8px;
+}
+
+.route-options-title {
+  font-weight: bold;
+}
+
+.route-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.route-message {
+  position: relative;
+  top: 78px;
+  left: 50%;
+  z-index: 999;
+  transform: translateX(-50%);
+
+  max-width: 420px;
+  padding: 10px 42px 10px 14px;
+
+  border: 2px solid black;
+  border-radius: 8px;
+
+  font-size: 14px;
+  font-weight: bold;
+  text-align: center;
+}
+
+.route-message-clear {
+  background: lightgreen;
+  color: black;
+}
+
+.route-message-warning {
+  background: lightyellow;
+  color: black;
+}
+.route-message-close{
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+
+    border: none;
+    background: transparent;
+    
+    color: black;
+    font-size: 22px;
+    font-weight: bolt;
+    line-height: 1;
+    cursor: pointer;
+
 }
 </style>
