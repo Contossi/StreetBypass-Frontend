@@ -33,6 +33,13 @@
   background: red;
   color: white;
 }
+
+.obstacle-marker img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  pointer-events: none;
+}
 .route-point-marker {
   width:32px;
   height: 32px;
@@ -48,4 +55,35 @@
   font-weight:bold;
   font-size: 14px;
   box-sizing:border-box;
+}
+.mapboxgl-popup-content{
+  padding: 0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.obstacle-popup{
+  min-width: 180px;
+  padding: 14px;
+}
+.obstacle-popup-title{
+  margin-bottom: 12px;
+  font-size: 16px;
+  font-weight: bold;
+  text-transform: capitalize;
+  color: black;
+}
+.delete-obstacle-button{
+  width: 100%;
+  min-height:40px;
+  padding:10px 14px;
+  border: none;
+  border-radius: 6px;
+  background: white;
+  color: red;
+  font-size:14px;
+  font-weight:bold;
+  cursor: pointer;
+}
+.delete-obstacle-button:hover{
+  background: orange;
 }

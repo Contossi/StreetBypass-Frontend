@@ -1,3 +1,5 @@
+
+
 <template>
     <div class="map-Container">
         <div ref="mapContainer" class ="map-container"></div>
@@ -34,6 +36,11 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+
+import sljunak from '../assets/sljunak.png'
+import pothole from '../assets/pothole.png'
+import kamera from '../assets/speed.png'
+import semafor from '../assets/traffic-light.png'
 
 const mapContainer = ref(null)
 const menuOpen =ref(false)
@@ -73,10 +80,37 @@ async function saveObstacle(obstacle) {
         const data = await response.json()
         console.log('Saved obstacle:', data)
 
+        return data.obstacle
+
     }   catch (error) {
         console.error('Fetch error: ', error)
         }
 }
+
+async function deleteObstacle(id, marker) {
+    try {
+        const response = await fetch (`http://localhost:3000/api/obstacles/${id}`, 
+        {
+            method: 'DELETE'
+        })
+
+    
+    if (!response.ok) {
+            const error = await response.json()
+            console.error('Delete error:', error)
+            return
+            
+    }
+
+    marker.remove()
+
+    console.log('Deleted obstacle:', id)
+
+    }   catch(error) {
+        console.error('Fetch delete error:', error)
+    }
+}
+
 async function loadObstacles() {
     try {
         const response = await fetch('http://localhost:3000/api/obstacles?lng=13.8496&lat=44.8683')
@@ -100,19 +134,66 @@ async function loadObstacles() {
       
     }
 }
+
+function getMarkerImage(type) {
+    if (type === 'semafor') return semafor
+    if (type === 'kamera') return kamera
+    if (type === 'sljunak') return sljunak
+    if (type === 'stara-cesta') return pothole
+
+    return null
+}
 function addPointMarker(obstacle) {
     const el =document.createElement('div')
     el.className = `obstacle-marker obstacle-marker-${obstacle.type}`
-    el.textContent =getMarkerIcon(obstacle.type)
+    
+    const imageSrc = getMarkerImage(obstacle.type)
+    
+    if(imageSrc) {
+        const image = document.createElement('img')
+        image.src = imageSrc
+        image.alt = obstacle.type
 
-    new mapboxgl.Marker(el)
+        el.appendChild(image)
+      } else {
+        el.textContent = obstacle.type.startsWith('lp') ? 'LP' : '!'
+    }
+
+    const popupContent = document.createElement('div')
+    popupContent.className ='obstacle-popup'
+
+    const title = document.createElement('div')
+    title.className = 'obstacle-popup-title'
+    title.textContent = obstacle.type
+
+    const deleteButton = document.createElement('button')
+    deleteButton.className ='delete-obstacle-button'
+    deleteButton.textContent = 'Delete obstacle'
+   
+
+    popupContent.appendChild(title)
+    popupContent.appendChild(deleteButton)
+
+    const popup = new mapboxgl.Popup({
+        offset: 25
+    }).setDOMContent(popupContent)
+
+
+    const marker = new mapboxgl.Marker(el)
     .setLngLat(obstacle.location.coordinates)
+    .setPopup(popup)
     .addTo(map)
+
+    deleteButton.addEventListener('click', async () => {
+        await deleteObstacle(obstacle._id, marker)
+    })
 }
 function getMarkerIcon(type){
-    if(type.startsWith('lp')) return 'Lp'
-    if(type === 'semafor') return 'semafor'
-    if(type === 'kamera') return 'kamera'
+    if(type.startsWith('lp')) return 'lp'
+    if(type === 'semafor') return semafor
+    if(type === 'kamera') return kamera
+    if(type === 'sljunakl') return sljunak
+    if (type === 'stara-cesta') return pothole
     return '!'
 }
 function clearRouteMarkers() {
@@ -246,9 +327,10 @@ onMounted(() => {
                 coordinates: coords
             }
         }
-        await saveObstacle(obstacle)
-        addPointMarker(obstacle)
-
+        const savedObstacle = await saveObstacle(obstacle)
+        if(savedObstacle) {
+            addPointMarker(savedObstacle)
+        }
         selectedType.value =null
     })
 
