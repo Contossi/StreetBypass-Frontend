@@ -133,6 +133,7 @@ const routeMessage = ref('')
 const routeHasObstacles = ref(false)
 const obstacleVisuals = new Map()
 const DETOUR_DISTANCES_KM = [0.08, 0.5 , 1.0, 2.0]
+let viewportRequestId=0
 let map = null
 
 
@@ -186,20 +187,11 @@ async function deleteObstacle(id, marker, sourceId =null, layerId=null) {
             return
             
     }
-
-    marker.remove()
-    obstacleVisuals.delete(String(id))
-
+    removeObstacleVisual(id)
     allObstacles.value = allObstacles.value.filter(obstacle => {
         return String(obstacle._id) !== String(id)
     })
 
-    if(layerId && map.getLayer(layerId)) {
-        map.removeLayer(layerId)
-    }
-    if(sourceId && map.getLayer(sourceId)) {
-        map.removeSource(sourceId)
-    }
 
     console.log('Deleted obstacle:', id)
 
@@ -208,33 +200,82 @@ async function deleteObstacle(id, marker, sourceId =null, layerId=null) {
     }
 }
 
-async function loadObstacles() {
-    try {
-        const response = await fetch('http://localhost:3000/api/obstacles?lng=13.8496&lat=44.8683')
+function removeObstacleVisual(id) {
+    const visual = obstacleVisuals.get(String(id))
 
-        if (!response.ok) {
-            const error = await response.json()
-            console.error('Backend error:', error)
-            return
-        }
-        const obstacles = await response.json()
+    if(!visual) return
 
-        allObstacles.value = obstacles
-
-        obstacles.forEach(obstacle => {
-            if ( obstacle.location.type === 'Point') {
-                addPointMarker(obstacle)
-            }
-            if(obstacle.location.type === 'LineString') {
-                addLineObstacle(obstacle)
-            }
-        })
-        console.log('Loaded obstacles: ', obstacles)
-
-      } catch (error) {
-        console.error('Fetch error:', error)
-      
+    if(visual.marker) {
+        visual.marker.remove()
     }
+    if(visual.layerId && map.getLayer(visual.layerId)) {
+        map.removeLayer(visual.layerId)
+    }
+    if(visual.sourceId && map.getSource(visual.sourceId)) {
+    map.removeSource(visual.sourceId)
+    }
+    obstacleVisuals.delete(String(id))
+}
+
+async function loadObstacles() {
+  if (!map) return
+
+  const bounds = map.getBounds()
+  const requestId = ++viewportRequestId
+
+  const params = new URLSearchParams({
+    west: String(bounds.getWest()),
+    south: String(bounds.getSouth()),
+    east: String(bounds.getEast()),
+    north: String(bounds.getNorth())
+  })
+
+  try {
+    const response = await fetch(
+      `http://localhost:3000/api/obstacles?${params}`
+    )
+
+    if (!response.ok) {
+      const error = await response.json()
+      console.error('Backend error:', error)
+      return
+    }
+
+    const obstacles = await response.json()
+
+    if (requestId !== viewportRequestId) return
+
+    const visibleIds = new Set(
+      obstacles.map(obstacle => String(obstacle._id))
+    )
+
+    obstacleVisuals.forEach((visual, id) => {
+      if (!visibleIds.has(String(id))) {
+        removeObstacleVisual(id)
+      }
+    })
+
+    obstacles.forEach(obstacle => {
+      const id = String(obstacle._id)
+
+      if (obstacleVisuals.has(id)) return
+
+      if (obstacle.location.type === 'Point') {
+        addPointMarker(obstacle)
+      }
+
+      if (obstacle.location.type === 'LineString') {
+        addLineObstacle(obstacle)
+      }
+    })
+
+    allObstacles.value = obstacles
+
+    console.log('Visible obstacles:', obstacles.length)
+
+  } catch (error) {
+    console.error('Fetch error:', error)
+  }
 }
 
 function getMarkerImage(type) {
@@ -794,6 +835,7 @@ onMounted(() => {
         })
     map.on('load', () => {
         loadObstacles()
+        map.on('moveend', loadObstacles)
     })     
     map.on('click', async (event) => {
         const coords = [event.lngLat.lng, event.lngLat.lat]
