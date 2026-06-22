@@ -87,3 +87,18 @@
 .delete-obstacle-button:hover{
   background: orange;
 }
+.line-obstacle-point-marker {
+  width: 32px;
+  height: 32px;
+  border: 2px solid white;
+  border-radius: 50%;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background: darkorange;
+  color: white;
+  font-weight: bold;
+  box-sizing: border-box;
+}
