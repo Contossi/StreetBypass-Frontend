@@ -309,12 +309,28 @@ function addPointMarker(obstacle) {
     title.className = 'obstacle-popup-title'
     title.textContent = obstacle.type
 
+    const pointTypes = ['lp1','lp2','lp3','lp4','lp5','semafor','kamera']
+    const typeSelect = document.createElement('select')
+    typeSelect.className = 'obstacle-type-select'
+    pointTypes.forEach(opt => {
+        const option = document.createElement('option')
+        option.value = opt
+        option.textContent = getObstacleDisplayName(opt)
+        if (opt === obstacle.type) option.selected = true
+        typeSelect.appendChild(option)
+    })
+
+    const changeButton = document.createElement('button')
+    changeButton.className = 'change-type-button'
+    changeButton.textContent = 'Promijeni tip'
+
     const deleteButton = document.createElement('button')
     deleteButton.className ='delete-obstacle-button'
     deleteButton.textContent = 'Delete obstacle'
-   
 
     popupContent.appendChild(title)
+    popupContent.appendChild(typeSelect)
+    popupContent.appendChild(changeButton)
     popupContent.appendChild(deleteButton)
 
     const popup = new mapboxgl.Popup({
@@ -329,6 +345,18 @@ function addPointMarker(obstacle) {
 
     obstacleVisuals.set(String(obstacle._id), {
         marker
+    })
+
+    changeButton.addEventListener('click', async () => {
+        const newType = typeSelect.value
+        if (newType === obstacle.type) return
+        const updated = await updateObstacle(obstacle._id, newType, obstacle.location)
+        if (updated) {
+            const idx = allObstacles.value.findIndex(o => String(o._id) === String(obstacle._id))
+            if (idx !== -1) allObstacles.value[idx] = updated
+            removeObstacleVisual(obstacle._id)
+            addPointMarker(updated)
+        }
     })
 
     deleteButton.addEventListener('click', async () => {
@@ -798,11 +826,28 @@ function addLineObstacle(obstacle) {
     ? 'Šljunak'
     : 'Stara cesta'
 
+   const lineTypes = ['sljunak', 'stara-cesta']
+   const lineTypeSelect = document.createElement('select')
+   lineTypeSelect.className = 'obstacle-type-select'
+   lineTypes.forEach(opt => {
+       const option = document.createElement('option')
+       option.value = opt
+       option.textContent = getObstacleDisplayName(opt)
+       if (opt === obstacle.type) option.selected = true
+       lineTypeSelect.appendChild(option)
+   })
+
+   const changeButton = document.createElement('button')
+   changeButton.className = 'change-type-button'
+   changeButton.textContent = 'Promijeni tip'
+
    const deleteButton = document.createElement('button')
    deleteButton.className = 'delete-obstacle-button'
    deleteButton.textContent = 'Delete obstacle'
 
    popupContent.appendChild(title)
+   popupContent.appendChild(lineTypeSelect)
+   popupContent.appendChild(changeButton)
    popupContent.appendChild(deleteButton)
 
    const popup = new mapboxgl.Popup({
@@ -819,6 +864,18 @@ function addLineObstacle(obstacle) {
         sourceId,
         layerId
     })
+
+   changeButton.addEventListener('click', async () => {
+       const newType = lineTypeSelect.value
+       if (newType === obstacle.type) return
+       const updated = await updateObstacle(obstacle._id, newType, obstacle.location)
+       if (updated) {
+           const idx = allObstacles.value.findIndex(o => String(o._id) === String(obstacle._id))
+           if (idx !== -1) allObstacles.value[idx] = updated
+           removeObstacleVisual(obstacle._id)
+           addLineObstacle(updated)
+       }
+   })
 
   deleteButton.addEventListener('click', async () => {
     await deleteObstacle(obstacle._id, marker, sourceId, layerId)
@@ -877,6 +934,27 @@ onMounted(() => {
     })
 
 })
+async function updateObstacle(id, type, location) {
+    try {
+        const response = await fetch(
+            `http://localhost:3000/api/obstacles/${id}`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, location })
+            }
+        )
+        const data = await response.json()
+        if (!response.ok) {
+            console.error('Update error:', data)
+            return null
+        }
+        return data.obstacle
+    } catch (error) {
+        console.error('Fetch update error:', error)
+        return null
+    }
+}
 </script>
 
 
@@ -1046,12 +1124,34 @@ onMounted(() => {
 
     border: none;
     background: transparent;
-    
+
     color: black;
     font-size: 22px;
     font-weight: bolt;
     line-height: 1;
     cursor: pointer;
 
+}
+</style>
+
+<style>
+.obstacle-type-select {
+    width: 100%;
+    padding: 4px 6px;
+    margin: 6px 0 2px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 13px;
+}
+.change-type-button {
+    width: 100%;
+    padding: 5px;
+    margin-bottom: 6px;
+    background: orange;
+    border: 1px solid black;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 13px;
 }
 </style>
