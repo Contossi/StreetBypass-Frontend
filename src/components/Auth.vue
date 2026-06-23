@@ -92,6 +92,10 @@ async function login() {
             error.value = 'Neispravno korisničko ime ili lozinka'
             return
         }
+        if (!data.jwt_token) {
+            error.value = 'Greška servera — pokušaj ponovo'
+            return
+        }
         localStorage.setItem('jwt_token', data.jwt_token)
         emit('authenticated')
     } catch {
