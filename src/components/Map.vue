@@ -17,7 +17,7 @@
             >
             <span>{{ routeMessage }}</span>
             <button
-            classs="route-message-close"
+            class="route-message-close"
             @click="closeRouteMode"
             aria-label="Zatvori navigaciju"
             >
@@ -75,17 +75,40 @@
             </label>
             </div>
 
+            <button
+                class="toggle-obstacles-button"
+                :class="obstaclesVisible ? 'toggle-obstacles-on' : 'toggle-obstacles-off'"
+                @click="toggleObstaclesVisibility"
+            >
+                {{ obstaclesVisible ? 'Sakrij prepreke' : 'Prikaži prepreke' }}
+            </button>
+
             <div v-if="menuOpen" class="add-menu">
                 <button @click="toggleLpMenu">
                     Ležeći policajac
                 </button>
 
                 <div v-if="lpMenuOpen" class="lpMenu">
-                    <button @click="selectObstacle('lp1')">LP1</button>
-                    <button @click="selectObstacle('lp2')">LP2</button>
-                    <button @click="selectObstacle('lp3')">LP3</button>
-                    <button @click="selectObstacle('lp4')">LP4</button>
-                    <button @click="selectObstacle('lp5')">LP5</button>
+                    <button @click="selectObstacle('lp1')" class="lp-button">
+                        <img src="../assets/crv.png" alt="lp1" class="lp-icon">
+                        <span>LP1</span>
+                    </button>
+                    <button @click="selectObstacle('lp2')" class="lp-button">
+                        <img src="../assets/kornjaca.png" alt="lp2" class="lp-icon">
+                        <span>LP2</span>
+                    </button>
+                    <button @click="selectObstacle('lp3')" class="lp-button">
+                        <img src="../assets/kornjacastup.png" alt="lp3" class="lp-icon">
+                        <span>LP3</span>
+                    </button>
+                    <button @click="selectObstacle('lp4')" class="lp-button">
+                        <img src="../assets/kameni.png" alt="lp4" class="lp-icon">
+                        <span>LP4</span>
+                    </button>
+                    <button @click="selectObstacle('lp5')" class="lp-button">
+                        <img src="../assets/treskanje.png" alt="lp5" class="lp-icon">
+                        <span>LP5</span>
+                    </button>
                 </div>
                 <button @click="selectObstacle('semafor')">Semafor</button>
                 <button @click="selectObstacle('kamera')">Kamera</button>
@@ -106,6 +129,11 @@ import sljunak from '../assets/sljunak.png'
 import pothole from '../assets/pothole.png'
 import kamera from '../assets/speed.png'
 import semafor from '../assets/traffic-light.png'
+import crv from '../assets/crv.png'
+import kornjaca from '../assets/kornjaca.png'
+import kornjacastup from '../assets/kornjacastup.png'
+import kameni from '../assets/kameni.png'
+import treskanje from '../assets/treskanje.png'
 
 const mapContainer = ref(null)
 const menuOpen =ref(false)
@@ -118,19 +146,12 @@ const lineObstaclePoints = ref([])
 const lineObstacleMarkers = ref([])
 const allObstacles = ref([])
 const routeOptionsOpen =ref(false)
-const avoidTypes = ref([
-    'lp1',
-    'lp2',
-    'lp3',
-    'lp4',
-    'lp5',
-    'semafor',
-    'kamera',
-    'sljunak',
-    'stara-cesta'
-])
+const avoidTypes = ref([])
 const routeMessage = ref('')
 const routeHasObstacles = ref(false)
+const routeActive = ref(false)
+const activeRouteObstacleIds = ref(new Set())
+const obstaclesVisible = ref(true)
 const obstacleVisuals = new Map()
 const DETOUR_DISTANCES_KM = [0.08, 0.5 , 1.0, 2.0]
 let viewportRequestId=0
@@ -269,6 +290,13 @@ async function loadObstacles() {
       }
     })
 
+    if (!obstaclesVisible.value || routeActive.value) {
+      obstacleVisuals.forEach((visual, id) => {
+        const isOnRoute = routeActive.value && activeRouteObstacleIds.value.has(id)
+        setObstacleVisibility(visual, isOnRoute || obstaclesVisible.value)
+      })
+    }
+
     allObstacles.value = obstacles
 
     console.log('Visible obstacles:', obstacles.length)
@@ -279,6 +307,11 @@ async function loadObstacles() {
 }
 
 function getMarkerImage(type) {
+    if (type === 'lp1') return crv
+    if (type === 'lp2') return kornjaca
+    if (type === 'lp3') return kornjacastup
+    if (type === 'lp4') return kameni
+    if (type === 'lp5') return treskanje
     if (type === 'semafor') return semafor
     if (type === 'kamera') return kamera
     if (type === 'sljunak') return sljunak
@@ -421,25 +454,34 @@ function setObstacleVisibility(visual, visible) {
     }
 }
 function showOnlyRouteObstacles(routeObstacles) {
-    const routeObstacleIds = new Set(
+    routeActive.value = true
+    activeRouteObstacleIds.value = new Set(
         routeObstacles.map(obstacle => String(obstacle._id))
     )
     obstacleVisuals.forEach((visual, obstacleId) => {
-        setObstacleVisibility(
-            visual,
-            routeObstacleIds.has(String(obstacleId))
-        )
+        const isOnRoute = activeRouteObstacleIds.value.has(String(obstacleId))
+        setObstacleVisibility(visual, isOnRoute || obstaclesVisible.value)
     })
 }
 function showAllObstacles() {
     obstacleVisuals.forEach(visual => {
-        setObstacleVisibility(visual, true)
+        setObstacleVisibility(visual, obstaclesVisible.value)
+    })
+}
+function toggleObstaclesVisibility() {
+    obstaclesVisible.value = !obstaclesVisible.value
+    obstacleVisuals.forEach((visual, id) => {
+        const isOnRoute = routeActive.value && activeRouteObstacleIds.value.has(id)
+        setObstacleVisibility(visual, isOnRoute || obstaclesVisible.value)
     })
 }
 function closeRouteMode() {
     clearRouteMarkers()
     clearRouteLine()
     showAllObstacles()
+
+    routeActive.value = false
+    activeRouteObstacleIds.value = new Set()
 
     routeMode.value = false
     routePoints.value = []
@@ -1011,10 +1053,23 @@ async function updateObstacle(id, type, location) {
 .lpMenu {
     display:flex;
     flex-direction:row;
+    flex-wrap: wrap;
     gap:6px;
     margin-left: 16px;
     padding-left:8px;
     border-left: 2px solid black;
+}
+.lp-button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 6px;
+}
+.lp-icon {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
 }
 
 .add-menu button{
@@ -1116,21 +1171,59 @@ async function updateObstacle(id, type, location) {
   background: lightyellow;
   color: black;
 }
-.route-message-close{
+.toggle-obstacles-button {
+    position: absolute;
+    top: 80px;
+    right: 20px;
+    z-index: 10;
+
+    padding: 10px 16px;
+    border-radius: 20px;
+    border: 2px solid black;
+
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: background 0.15s, color 0.15s;
+}
+.toggle-obstacles-on {
+    background: orange;
+    color: black;
+}
+.toggle-obstacles-off {
+    background: #333;
+    color: white;
+}
+
+.route-message-close {
     position: absolute;
     top: 50%;
     right: 10px;
     transform: translateY(-50%);
 
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
     border: none;
-    background: transparent;
 
-    color: black;
-    font-size: 22px;
-    font-weight: bolt;
+    background: crimson;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
     line-height: 1;
     cursor: pointer;
 
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    transition: background 0.15s;
+}
+.route-message-close:hover {
+    background: darkred;
 }
 </style>
 
