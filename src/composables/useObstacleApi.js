@@ -1,4 +1,4 @@
-const BASE = 'http://localhost:3000/api'
+const BASE = 'https://streetbypass-backend.onrender.com/api'
 
 export function useObstacleApi(authHeader, onUnauthorized) {
     async function apiFetch(url, options = {}) {

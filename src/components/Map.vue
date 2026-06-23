@@ -112,7 +112,7 @@ async function loadObstacles() {
     })
 
     try {
-        const response = await fetch(`http://localhost:3000/api/obstacles?${params}`)
+        const response = await fetch(`https://streetbypass-backend.onrender.com/api/obstacles?${params}`)
         if (!response.ok) { console.error('Backend error:', await response.json()); return }
 
         const obstacles = await response.json()
